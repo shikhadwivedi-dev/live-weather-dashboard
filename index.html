@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Weather Dashboard - Shikha Dwivedi | Project 04</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#e0f2fe;color:#0f172a;padding:20px}
+.wrap{max-width:1000px;margin:0 auto}
+header{text-align:center;margin-bottom:20px}
+header h1{font-size:32px} header p{color:#475569;margin-top:6px}
+.search{background:white;padding:16px;border-radius:14px;display:flex;gap:10px;box-shadow:0 4px 12px rgba(0,0,0,.08)}
+.search input{flex:1;padding:13px;border:2px solid #e2e8f0;border-radius:10px;font-size:16px}
+.search button{padding:13px 24px;background:#2563eb;color:white;border:0;border-radius:10px;font-weight:bold;cursor:pointer}
+.search button:disabled{opacity:.6;cursor:not-allowed}
+.quick{margin:10px 0;display:flex;gap:8px;flex-wrap:wrap}
+.quick button{background:white;border:1px solid #cbd5e1;padding:8px 14px;border-radius:999px;cursor:pointer}
+#status{text-align:center;padding:12px;font-weight:bold;min-height:24px}
+#status.error{color:#dc2626;background:#fee2e2;border-radius:10px}
+#status.loading{color:#2563eb}
+.main{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}
+.card{background:white;border-radius:16px;padding:22px;box-shadow:0 4px 12px rgba(0,0,0,.08)}
+.card.dark{background:#0f172a;color:white}
+.big{font-size:56px;font-weight:bold}
+.grid5{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:16px}
+.day{background:white;border-radius:14px;padding:16px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.08)}
+@media(max-width:700px){.main{grid-template-columns:1fr}.grid5{grid-template-columns:repeat(2,1fr)}.search{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><h1>Live Weather Dashboard</h1><p>Search any city - real live data from Open-Meteo API (Free, no API key needed)</p></header>
+
+<form class="search" id="form">
+<input id="city" type="text" placeholder="Enter city - e.g. Mumbai, Delhi, London..." autocomplete="off">
+<button type="submit" id="searchBtn">Search</button>
+</form>
+<div class="quick">
+<button type="button" data-city="Mumbai">Mumbai</button>
+<button type="button" data-city="Delhi">Delhi</button>
+<button type="button" data-city="London">London</button>
+<button type="button" data-city="New York">New York</button>
+<button type="button" data-city="Tokyo">Tokyo</button>
+</div>
+<p id="status">Loading...</p>
+
+<div class="main">
+<div class="card">
+<h2 id="cityName">-</h2>
+<p class="big" id="temp">-</p>
+<p id="condition">-</p>
+<p id="feelsLike" style="color:#64748b;margin-top:8px">-</p>
+</div>
+<div class="card dark"><h3>Details</h3><div id="details" style="margin-top:12px;line-height:2">-</div><p style="color:#94a3b8;margin-top:14px;font-size:13px">Data: Open-Meteo API - Updates live<br>Made by Shikha Dwivedi - InternCircle Project 04</p></div>
+</div>
+
+<h2 style="margin:20px 0 0">5-Day Forecast</h2>
+<div class="grid5" id="forecast"></div>
+</div>
+
+<script>
+// API URLs in one place - easy to change
+var GEO_URL = "https://geocoding-api.open-meteo.com/v1/search";
+var FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
+
+// Weather code to emoji-free label - as per guide
+var WEATHER_LABELS = {0:"Clear",1:"Mainly Clear",2:"Partly Cloudy",3:"Overcast",45:"Fog",48:"Fog",51:"Light Drizzle",53:"Drizzle",55:"Heavy Drizzle",61:"Light Rain",63:"Rain",65:"Heavy Rain",71:"Light Snow",73:"Snow",75:"Heavy Snow",80:"Light Showers",81:"Showers",82:"Heavy Showers",95:"Thunderstorm",96:"Thunderstorm",99:"Thunderstorm"};
+function codeToLabel(code){ return WEATHER_LABELS[code] || "Cloudy"; }
+
+async function findCity(name){
+  var url = GEO_URL + "?count=1&name=" + encodeURIComponent(name);
+  var res = await fetch(url);
+  if(!res.ok) throw new Error("The search service is not responding.");
+  var data = await res.json();
+  if(!data.results || !data.results.length) throw new Error("City not found.");
+  var c = data.results[0];
+  return { name: c.name, country: c.country, lat: c.latitude, lon: c.longitude };
+}
+
+async function getWeather(lat, lon){
+  var url = FORECAST_URL + "?latitude=" + lat + "&longitude=" + lon + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&timezone=auto";
+  var res = await fetch(url);
+  if(!res.ok) throw new Error("Could not load the forecast.");
+  return res.json();
+}
+
+function render(city, weather){
+  // All user / API text shown with textContent - safe, no innerHTML
+  document.getElementById("cityName").textContent = city.name + ", " + city.country;
+  document.getElementById("temp").textContent = Math.round(weather.current.temperature_2m) + " C";
+  document.getElementById("condition").textContent = codeToLabel(weather.current.weather_code);
+  document.getElementById("feelsLike").textContent = "Feels like " + Math.round(weather.current.apparent_temperature) + " C";
+  document.getElementById("details").textContent = "Humidity: " + weather.current.relative_humidity_2m + "% | Wind: " + weather.current.wind_speed_10m + " km/h | Lat: " + city.lat.toFixed(2) + ", Lon: " + city.lon.toFixed(2);
+
+  var forecastEl = document.getElementById("forecast");
+  forecastEl.textContent = "";
+  for(var i=0;i<5;i++){
+    var date = new Date(weather.daily.time[i]);
+    var dayName = i===0 ? "Today" : date.toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"});
+    var div = document.createElement("div");
+    div.className = "day";
+    var h = document.createElement("b"); h.textContent = dayName;
+    var p1 = document.createElement("p"); p1.textContent = codeToLabel(weather.daily.weather_code[i]);
+    var p2 = document.createElement("b"); p2.textContent = Math.round(weather.daily.temperature_2m_max[i]) + " / " + Math.round(weather.daily.temperature_2m_min[i]) + " C";
+    div.appendChild(h); div.appendChild(p1); div.appendChild(p2);
+    forecastEl.appendChild(div);
+  }
+}
+
+async function loadCity(name){
+  var status = document.getElementById("status");
+  var btn = document.getElementById("searchBtn");
+  name = name.trim();
+  // Validation - empty + only letters
+  if(!name){ status.textContent = "Type a city name."; status.className = "error"; return; }
+  if(!/^[a-zA-Z\s\-]+$/.test(name)){ status.textContent = "City name should only have letters."; status.className = "error"; return; }
+  status.textContent = "Loading..."; status.className = "loading";
+  btn.disabled = true; // Disable button while loading - as per guide
+  document.getElementById("city").value = name;
+  try{
+    var city = await findCity(name);
+    var weather = await getWeather(city.lat, city.lon);
+    render(city, weather);
+    status.textContent = "Showing live weather for " + city.name;
+    status.className = "";
+    // Remember last city
+    try{ localStorage.setItem("lastCity", city.name); }catch(e){}
+  }catch(err){
+    // Friendly error - City not found / Network problem
+    if(err.message === "City not found.") status.textContent = "City not found. Try Mumbai, Delhi, London.";
+    else if(err.message.indexOf("fetch") !== -1 || err.message.indexOf("Network") !== -1) status.textContent = "Network problem. Check your internet and try again.";
+    else status.textContent = err.message;
+    status.className = "error";
+  }finally{ btn.disabled = false; }
+}
+
+document.getElementById("form").addEventListener("submit", async function(e){
+  e.preventDefault();
+  await loadCity(document.getElementById("city").value);
+});
+document.querySelectorAll(".quick button").forEach(function(b){
+  b.addEventListener("click", function(){ loadCity(b.getAttribute("data-city")); });
+});
+
+// Load last city or Mumbai on start
+var saved = "Mumbai";
+try{ saved = localStorage.getItem("lastCity") || "Mumbai"; }catch(e){}
+loadCity(saved);
+</script>
+</body>
+</html>
